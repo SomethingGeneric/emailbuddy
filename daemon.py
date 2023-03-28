@@ -97,7 +97,7 @@ while True:
             msg = MIMEMultipart()
             msg["From"] = from_email
             msg["To"] = to_email
-            msg["Subject"] = subject
+            #msg["Subject"] = subject
 
             msg.attach(MIMEText(body, "plain"))
 
