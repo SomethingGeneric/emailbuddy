@@ -3,29 +3,26 @@ import email
 import time
 import sys
 import signal
-import getpass
-import openai
+import toml
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Connect to the IMAP server
-mail = imaplib.IMAP4_SSL("sop.al")
+from the_boy import ai_gen
 
-sender_addr = input("Email: ")
-sender_passw = getpass.getpass()
+with open("config.toml", ) as f:
+    config = toml.load(f)
+
+sender_addr = config['from']
+sender_passw = config['passw']
+base_prompt = config['prompt']
+
+# Connect to the IMAP server
+mail = imaplib.IMAP4_SSL(sender_addr.split("@")[1])
 
 mail.login(sender_addr, sender_passw)
 mail.select("inbox")
 
-openai.api_key = open(".key").read().strip()
-
-start_messages = [
-    {
-        "role": "system",
-        "content": "You are responding to a short form message from a user. It could be about anything",
-    },
-]
 
 
 # Define a function to retrieve the latest unread email
@@ -54,14 +51,8 @@ def get_email_details(message):
 
 # Define a function to generate a response using the local model
 def generate_response(prompt):
-    my_msgs = start_messages.copy()
-    my_msgs.append({"role": "user", "content": prompt})
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=my_msgs,
-    )
-    return response["choices"][0]["message"]["content"]
-
+    yprompt = base_prompt + prompt
+    return ai_gen(yprompt)
 
 # Define a function to handle SIGTERM signal
 def sigterm_handler(signal, frame):
@@ -75,11 +66,11 @@ signal.signal(signal.SIGTERM, sigterm_handler)
 # Retrieve the latest unread email
 message = get_latest_email()
 
+print("Logged in. Starting check loop.")
+
 # Run the daemon loop
 while True:
     try:
-        print("Checking for emails")
-
         # Retrieve the latest unread email
         message = get_latest_email()
 
@@ -111,8 +102,9 @@ while True:
                 smtp.login(smtp_username, smtp_password)
                 smtp.send_message(msg)
 
+            print("Response sent.")
+
         # Wait for 10 seconds before checking for new emails again
-        print("Sleeping before next check.")
         time.sleep(10)
 
     except KeyboardInterrupt:
