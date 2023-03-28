@@ -3,11 +3,12 @@ import email
 import time
 import sys
 import signal
+import getpass
 from transformers import pipeline
 
 # Connect to the IMAP server
 mail = imaplib.IMAP4_SSL('sop.al')
-mail.login('YOUR_USERNAME', 'YOUR_PASSWORD')
+mail.login(input("Email: "), getpass.getpass())
 mail.select('inbox')
 
 # Set up the local model using transformers pipeline
