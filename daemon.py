@@ -12,7 +12,7 @@ mail.login(input("Email: "), getpass.getpass())
 mail.select('inbox')
 
 # Set up the local model using transformers pipeline
-nlp = pipeline('text-generation', model='BartForCausalLM', device=0)
+nlp = pipeline('text-generation', model='gpt2', device=0)
 
 # Define a function to retrieve the latest unread email
 def get_latest_email():
