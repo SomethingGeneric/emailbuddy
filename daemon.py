@@ -1,28 +1,33 @@
 import imaplib
 import email
 import time
-import sys
+import sys, os
 import signal
-import toml
+import toml,json
 import smtplib
+import openai
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-from the_boy import ai_gen
-
-with open("config.toml", ) as f:
+with open(
+    "config.toml",
+) as f:
     config = toml.load(f)
 
-sender_addr = config['from']
-sender_passw = config['passw']
-base_prompt = config['prompt']
+if not os.path.exists("data"):
+    os.makedirs("data")
+
+sender_addr = config["from"]
+sender_passw = config["passw"]
+openai.api_key = config["openai"]
+
+from messages import start_messages
 
 # Connect to the IMAP server
 mail = imaplib.IMAP4_SSL(sender_addr.split("@")[1])
 
 mail.login(sender_addr, sender_passw)
 mail.select("inbox")
-
 
 
 # Define a function to retrieve the latest unread email
@@ -50,66 +55,97 @@ def get_email_details(message):
 
 
 # Define a function to generate a response using the local model
-def generate_response(prompt):
-    yprompt = base_prompt + prompt
-    return ai_gen(yprompt)
+def generate_response(fromaddr, subj, prompt):
+    
+    subj = subj.replace("Re: ", "")
+    if os.path.exists(f"data/{fromaddr}-{subj}.saved"):
+        p_messages_dict = json.loads(open(f"data/{fromaddr}-{subj}.saved").read())
+        p_messages = [p_messages_dict] if isinstance(p_messages_dict, dict) else p_messages_dict
+    else:
+        p_messages = start_messages.copy()
+
+    p_messages.append({"role": "user", "content": prompt})
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=p_messages,
+    )
+
+    #print(response)
+
+    newm = {
+        "role": "assistant",
+        "content": response["choices"][0]["message"]["content"],
+    }
+    p_messages.append(newm)
+
+    #print(p_messages)
+
+    with open(f"data/{fromaddr}-{subj}.saved", "w") as f:
+        f.write(json.dumps(p_messages))
+
+    return response["choices"][0]["message"]["content"]
+
 
 # Define a function to handle SIGTERM signal
 def sigterm_handler(signal, frame):
     print("SIGTERM received. Exiting...")
     sys.exit(0)
 
+if __name__ == "__main__":
 
-# Set up the SIGTERM signal handler
-signal.signal(signal.SIGTERM, sigterm_handler)
+    # Set up the SIGTERM signal handler
+    signal.signal(signal.SIGTERM, sigterm_handler)
 
-# Retrieve the latest unread email
-message = get_latest_email()
+    # Retrieve the latest unread email
+    message = get_latest_email()
 
-print("Logged in. Starting check loop.")
+    print("Logged in. Starting check loop.")
 
-# Run the daemon loop
-while True:
-    try:
-        # Retrieve the latest unread email
-        message = get_latest_email()
+    # Run the daemon loop
+    while True:
+        try:
+            # Retrieve the latest unread email
+            message = get_latest_email()
 
-        # If there is an unread email and it's not from the bot, extract the details and generate a response
-        if message and message["From"] != "me":
-            print("Found a new message")
-            body, sender = get_email_details(message)
-            response = generate_response(body)
+            # If there is an unread email and it's not from the bot, extract the details and generate a response
+            if message and message["From"] != "me":
+                print("Found a new message")
+                body, sender = get_email_details(message)
 
-            from_email = sender_addr
-            to_email = sender
-            subject = "Re: {}".format(message["Subject"])
-            body = response
+                response = generate_response(sender, message["Subject"], body)
 
-            msg = MIMEMultipart()
-            msg["From"] = from_email
-            msg["To"] = to_email
-            #msg["Subject"] = subject
+                from_email = sender_addr
+                to_email = sender
+                subject = "Re: {}".format(message["Subject"])
+                body = response
 
-            msg.attach(MIMEText(body, "plain"))
+                msg = MIMEMultipart()
+                msg["From"] = from_email
+                msg["To"] = to_email
+                if subject != "":
+                    msg["Subject"] = subject
 
-            smtp_server = sender_addr.split("@")[1]
-            smtp_port = 587
-            smtp_username = sender_addr
-            smtp_password = sender_passw
+                msg.attach(MIMEText(body, "plain"))
 
-            with smtplib.SMTP(smtp_server, smtp_port) as smtp:
-                smtp.starttls()
-                smtp.login(smtp_username, smtp_password)
-                smtp.send_message(msg)
+                smtp_server = sender_addr.split("@")[1]
+                smtp_port = 587
+                smtp_username = sender_addr
+                smtp_password = sender_passw
 
-            print("Response sent.")
+                with smtplib.SMTP(smtp_server, smtp_port) as smtp:
+                    smtp.starttls()
+                    smtp.login(smtp_username, smtp_password)
+                    smtp.send_message(msg)
 
-        # Wait for 10 seconds before checking for new emails again
-        time.sleep(10)
+                print("Response sent.")
 
-    except KeyboardInterrupt:
-        print("Keyboard interrupt received. Exiting...")
-        sys.exit(0)
+            # Wait for 10 seconds before checking for new emails again
+            time.sleep(10)
 
-    except Exception as e:
-        print("An error occurred:", e)
+        except KeyboardInterrupt:
+            print("Keyboard interrupt received. Exiting...")
+            sys.exit(0)
+
+        except Exception as e:
+            print("An error occurred:", e)

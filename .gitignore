@@ -1,5 +1,6 @@
-.key
 config.toml
+messages.py
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
