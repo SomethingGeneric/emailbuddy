@@ -12,7 +12,7 @@ mail.login(input("Email: "), getpass.getpass())
 mail.select('inbox')
 
 # Set up the local model using transformers pipeline
-nlp = pipeline('text-generation', model='distilbert-base-uncased', device=0)
+nlp = pipeline('text-generation', model='BartForCausalLM', device=0)
 
 # Define a function to retrieve the latest unread email
 def get_latest_email():
@@ -54,16 +54,20 @@ while True:
     try:
         # Retrieve the latest unread email
         message = get_latest_email()
+        print("Checking for emails")
 
         # If there is an unread email, extract the details and generate a response
         if message:
+            print("Found a new message")
             body, sender = get_email_details(message)
             response = generate_response(body)
 
             # Send the response back to the sender
             mail.append('inbox', None, None, ('From: me\r\nTo: {}\r\nSubject: Re: {}\r\n\r\n{}'.format(sender, message['Subject'], response)).encode())
+            print("Queue'd a response")
 
         # Wait for 10 seconds before checking for new emails again
+        print("Sleeping before next check.")
         time.sleep(10)
 
     except KeyboardInterrupt:
