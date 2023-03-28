@@ -4,15 +4,18 @@ import time
 import sys
 import signal
 import getpass
-from transformers import pipeline
+import torch
+from transformers import GPT2Tokenizer, GPT2LMHeadModel
 
 # Connect to the IMAP server
 mail = imaplib.IMAP4_SSL('sop.al')
 mail.login(input("Email: "), getpass.getpass())
 mail.select('inbox')
 
-# Set up the local model using transformers pipeline
-nlp = pipeline('text-generation', model='gpt2', device=0)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+tokenizer = GPT2Tokenizer.from_pretrained('gpt2-xl')
+model = GPT2LMHeadModel.from_pretrained('gpt2-xl').to(device)
+model.eval()
 
 # Define a function to retrieve the latest unread email
 def get_latest_email():
@@ -38,8 +41,14 @@ def get_email_details(message):
 
 # Define a function to generate a response using the local model
 def generate_response(prompt):
-    response = nlp(prompt, max_length=1024, do_sample=True, temperature=0.7)[0]['generated_text']
-    return response.strip()
+    length = 5000
+    temperature = 0.8
+    prompt_tokens = tokenizer.encode(prompt, return_tensors='pt').to(device)
+    # Generate text
+    output = model.generate(prompt_tokens, max_length=length, temperature=temperature)
+    # Decode output and return as response
+    output_text = tokenizer.decode(output[0], skip_special_tokens=True)
+    return output_text.strip()
 
 # Define a function to handle SIGTERM signal
 def sigterm_handler(signal, frame):
